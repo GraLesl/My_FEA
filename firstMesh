@@ -1,0 +1,104 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+from scipy.spatial import Delaunay
+import FEATools as FEAtools
+import time
+from scipy.sparse.linalg import spsolve
+
+# Define Mesh Parameters 
+rm = 5 # Mean Radius (mm)
+width = 2 # Arc width (mm)
+ri = rm - 0.5*width
+ro = rm + 0.5*width
+h = 2*ro # IDK maybe graph bounds
+L = ro # IDK maybe graph bounds
+n_elem = 30 # Number of nodes per angle
+n_angles = 200 # Number of angles
+tot_elem = n_elem * n_angles
+
+
+start_time = time.perf_counter()
+
+# Create Mesh
+points,simplices,num_nodes,DOF,tri = FEAtools.mesh_semicircle(ri,ro,n_elem,n_angles)
+
+# Cut off extra simplices that generate inside the arc
+p = []
+r_cut = ri - 0.01
+for theta in np.linspace(0,3.14, num = n_angles):
+    x = np.cos(theta) * r_cut
+    y = np.sin(theta) * r_cut
+    p.append([x,y])
+
+strings = tri.find_simplex(p)
+simplices = np.delete(simplices, strings[1:-1],0)
+
+FEAtools.plot_mesh(points,simplices,1)
+
+
+# Boundary Conditions
+# Categorize All points that have boundary conditions applied to them
+BC = FEAtools.BoundaryConditions(DOF)
+
+
+pLocked = []
+pSlide_X = []
+pforced = []
+Force_X = 9000 # Force (N)
+for i,point in enumerate(points):
+    # Lock points on right of arc
+    if point[0] > 0 and point[1] < 0.0001:
+        pLocked.append(i)
+    
+    # Apply pull force to left side of arc, then lock them in the y direction
+    if point[0] < 0 and point[1] < 0.1:
+        pforced.append(i)
+        pSlide_X.append(i)
+
+pLocked = np.array([pLocked]).flatten()
+pSlide = np.array([pSlide_X]).flatten()
+pforced = np.array([pforced]).flatten()
+
+BC.fix_nodes(pLocked)
+BC.fix_nodes(pSlide,directions='y')
+BC.add_distributed_load(pforced,Force_X,0)
+
+# Material Properties
+SF = 2 # Safety Factor
+E = 350000 / SF # Young's Modulus (MPA)
+v = 0.33
+t = 5 # Thickness in mm 
+
+# Define Global Stiffness Matrix
+KG = FEAtools.globalStiff(points,simplices,E,v,t)
+
+# Apply Boundary Conditions
+K_reduced, f_reduced, free_points = BC.apply(KG)
+
+# Solve for Displacement on all DOFS
+u_reduced = spsolve(K_reduced, f_reduced)
+u_reduced = u_reduced.flatten()
+
+# Apply displacements to all free DOFs leaving fixed ones locked
+u_full = np.zeros(DOF)
+u_full[free_points] = u_reduced
+
+maxDeformation = max(np.abs(u_full))
+
+#Find new nodes
+new_points = FEAtools.apply_deformation(points,u_full)
+plt.plot(new_points[:,0], new_points[:,1], 'o')
+
+end_time = time.perf_counter()
+elapsed_time = end_time - start_time
+
+print("--- Diagnostics ---")
+print("Nodes:", num_nodes, f"Execution time: {elapsed_time:.4f} seconds")
+print("KG shape:", KG.shape)
+print("f shape:", BC.f.shape, "sum f:", np.sum(BC.f))
+print("Max Displacement:", maxDeformation)
+avgSkew, minSkew = FEAtools.check_skew(points,simplices)
+print("Average Skew:", avgSkew, "Min Skew", minSkew)
+
+plt.show()

@@ -1,0 +1,38 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+from scipy.spatial import Delaunay
+from collections import defaultdict
+import FEATools as FEAtools
+
+# --- Defining Mesh ---
+l = 300
+h = 75
+t = 16
+n_elm = 2
+E = 210000
+v = 0.3
+
+points,simplices,num_nodes,DOF = FEAtools.mesh_rectangle(l,h,n_elm+4,n_elm)
+FEAtools.plot_mesh(points,simplices,1)
+
+## Generate Global Stiffness
+KG = FEAtools.globalStiff(points,simplices,E,v,t)
+
+## Empose Constraints
+fixed_points = np.array([0,1]).flatten()
+f = FEAtools.create_forces(DOF,(10,11),'y',-800000)
+KG_constrained,f = FEAtools.constrain(KG,f,fixed_points)
+
+
+## Solve for displacement Vector
+KG_inv = np.linalg.inv(KG_constrained)
+u = KG_inv @ f
+
+new_points = FEAtools.apply_deformation(points,fixed_points=fixed_points,displacement=u)
+#new_tri = Delaunay(new_points)
+#plt.triplot(new_points[:,0], new_points[:,1], new_tri.simplices)
+plt.plot(new_points[:,0], new_points[:,1], 'o')
+plt.show()
+    
