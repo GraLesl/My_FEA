@@ -3,10 +3,8 @@ from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 from scipy.sparse import lil_matrix
 
-def hello():
-    print("Hello from file_a!")
-
-
+# Stiffness Matrix Manipulation
+# --------------------------------------------------------
 def points_of_element(points, simplex):
     x = np.zeros(3)
     y = np.zeros(3)
@@ -146,8 +144,8 @@ def apply_deformation(points, displacements):
 
     return new_points
 
-## Mesh
-## tools to generate 2d meshes
+# 2D Mesh Generation
+# --------------------------------------------------------
 def mesh_rectangle(l,h,n_elm_l,n_elm_h):
     nodes = []
 
@@ -185,12 +183,24 @@ def mesh_semicircle(ri,ro,n_elem,n_angles):
     simplices = tri.simplices
     num_elem = len(tri.points)
     DOF = num_elem * 2
+    
+    # Cut off extra simplices that generate inside the arc
+    p = []
+    r_cut = ri - 0.01
+    for theta in np.linspace(0,3.14, num = n_angles):
+        x = np.cos(theta) * r_cut
+        y = np.sin(theta) * r_cut
+        p.append([x,y])
+
+    strings = tri.find_simplex(p)
+    simplices = np.delete(simplices, strings[1:-1],0)
 
     return points,simplices,num_elem, DOF, tri
 
 # Boundary Conditions
 # Put all boundary conditions including fixed DOFs and forces in one place
 # Then use the apply method to constrain the global stiffness matrix
+# -----------------------------------------------------------------------------
 class BoundaryConditions:
 
     def __init__(self,ndof):
@@ -226,8 +236,18 @@ class BoundaryConditions:
 
         return K_reduced, f_reduced, free_points
 
+# Material Class
+class Material:
+    def __init__(self,E,v,t):
+        self.E = E
+        self.v = v
+        self.t = t
+
 # Make Convergence Test
-def convergence():
+def convergence(geometry,MatProps,BoundaryConditions):
+    # Geometry is an array where the first index is its shape, and subsequent
+    # indexes are the necessary parameters (MAYBE THIS SHOULD BE A CLASS)
+    # Rectangular ['r',l,h,]
     a = 1
 
 # Mesh Quality Check

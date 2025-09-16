@@ -24,6 +24,7 @@ start_time = time.perf_counter()
 points,simplices,num_nodes,DOF,tri = FEAtools.mesh_semicircle(ri,ro,n_elem,n_angles)
 
 # Cut off extra simplices that generate inside the arc
+'''
 p = []
 r_cut = ri - 0.01
 for theta in np.linspace(0,3.14, num = n_angles):
@@ -33,7 +34,7 @@ for theta in np.linspace(0,3.14, num = n_angles):
 
 strings = tri.find_simplex(p)
 simplices = np.delete(simplices, strings[1:-1],0)
-
+'''
 FEAtools.plot_mesh(points,simplices,1)
 
 
@@ -45,7 +46,7 @@ BC = FEAtools.BoundaryConditions(DOF)
 pLocked = []
 pSlide_X = []
 pforced = []
-Force_X = 9000 # Force (N)
+Force_X = 90 # Force (N)
 for i,point in enumerate(points):
     # Lock points on right of arc
     if point[0] > 0 and point[1] < 0.0001:
@@ -66,7 +67,7 @@ BC.add_distributed_load(pforced,Force_X,0)
 
 # Material Properties
 SF = 2 # Safety Factor
-E = 350000 / SF # Young's Modulus (MPA)
+E = 160000 / SF # Young's Modulus (MPA)
 v = 0.33
 t = 5 # Thickness in mm 
 
