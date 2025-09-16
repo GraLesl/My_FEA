@@ -2,6 +2,8 @@ import numpy as np
 from scipy.spatial import Delaunay
 import matplotlib.pyplot as plt
 from scipy.sparse import lil_matrix
+import time
+from scipy.sparse.linalg import spsolve
 
 # Stiffness Matrix Manipulation
 # --------------------------------------------------------
@@ -44,8 +46,10 @@ def beta_matrix(points,simplex):
 
     return B,x,y,GPI
 
-def mat_matrix(E,v):
+def mat_matrix(Mat):
     # Plane Stress
+    E = Mat.E
+    v = Mat.v
     D = np.array([[1,v,0],[v,1,0],[0,0,(1-v)/2]]) * E / (1-v**2)
     # Plane Strain
     #D = ((E*(1-v))/((1+v)*(1-2*v))) * np.array([[1,v/(1-v),0],[v/(1-v),1,0],[0,0,(1-2*v)/(2*v)/(2*(1-v))]])
@@ -60,14 +64,14 @@ def localStiff(points,simplices,simp_num,D,t):
 
     return kl, GPI
 
-def globalStiff(points,simplices,E,v,t):
+def globalStiff(points,simplices,Mat):
     num_nodes = len(points)
     KG = lil_matrix((num_nodes*2,num_nodes*2))
-    D = mat_matrix(E,v)
+    D = mat_matrix(Mat)
 
     for elem,simp in enumerate(simplices):
         
-        kl, GPIl = localStiff(points, simplices, elem, D, t)
+        kl, GPIl = localStiff(points, simplices, elem, D, Mat.t)
         GPIl = GPIl.astype(int)
         KG[np.ix_(GPIl, GPIl)] += kl
         '''
@@ -195,7 +199,7 @@ def mesh_semicircle(ri,ro,n_elem,n_angles):
     strings = tri.find_simplex(p)
     simplices = np.delete(simplices, strings[1:-1],0)
 
-    return points,simplices,num_elem, DOF, tri
+    return points,simplices,num_elem, DOF
 
 # Boundary Conditions
 # Put all boundary conditions including fixed DOFs and forces in one place
@@ -226,6 +230,10 @@ class BoundaryConditions:
         self.f[2*nodes]     += unit_Load_X
         self.f[2*nodes + 1] += unit_Load_Y
 
+    def selectzone(self,rangeX, rangeY):
+        self.rangeX = rangeX
+        self.rangeY = rangeY
+
     def apply(self,K):
 
         all_dofs = np.arange(self.ndof)
@@ -236,6 +244,17 @@ class BoundaryConditions:
 
         return K_reduced, f_reduced, free_points
 
+class singleCondition:
+    # Store all important information about a given condition (Force, DistLoad, DOFConst)
+    def __init__(self,type,rangeX,rangeY,directions='xy',fx=0,fy=0):
+        self.type = type
+        self.rangeX = rangeX
+        self.rangeY = rangeY
+        self.directions = directions
+        self.fx = fx
+        self.fy = fy
+        pass
+
 # Material Class
 class Material:
     def __init__(self,E,v,t):
@@ -243,12 +262,118 @@ class Material:
         self.v = v
         self.t = t
 
+#Solve Function
+# Given a global stiffness matrix and BC, solve for displacement
+def solve_KG_BC(KG, BC):
+    
+    DOF = KG.shape[0]
+
+    K_reduced, f_reduced, free_points = BC.apply(KG)
+
+    # Solve for Displacement on all DOFS
+    u_reduced = spsolve(K_reduced, f_reduced)
+    u_reduced = u_reduced.flatten()
+
+    # Apply displacements to all free DOFs leaving fixed ones locked
+    u_full = np.zeros(DOF)
+    u_full[free_points] = u_reduced
+
+    maxDeformation = max(np.absolute(u_reduced))
+
+    return u_full, maxDeformation
+
 # Make Convergence Test
-def convergence(geometry,MatProps,BoundaryConditions):
+def convergence(geometry,Mat,Conditions,minNodes = 500, maxNodes = 5000,nData = 10):
     # Geometry is an array where the first index is its shape, and subsequent
     # indexes are the necessary parameters (MAYBE THIS SHOULD BE A CLASS)
-    # Rectangular ['r',l,h,]
-    a = 1
+    # Rectangular ['r',w,h]
+    # SemiCircle ['sc', rm, width]
+    # Mat props class containing E,v,t of a material
+    # Boundary Conditions, a list of classes containing zones and their associated Boundary conditions
+    #-------------
+    # Objective is to incremenet up the number of nodes from the min to max
+    # Make a plot of peak Deformation across nodes
+    # Get a time readout for each mesh aswell
+
+    num_Nodes_vector = np.linspace(minNodes,maxNodes,nData,dtype=int)
+    num_Nodes_actual = []
+    maxDisp = []
+    time_to_solve = []
+    for numNodes in num_Nodes_vector:
+        start_time = time.perf_counter()
+        
+        # Create points and simlices based on geometry and current nodes
+        geomType = geometry[0]
+        if geomType == 'r':
+            w = geometry[1]
+            h = geometry[2]
+            ratio = np.sqrt(w/h)
+
+            persideN = round(np.sqrt(numNodes))
+            nodesOnWidth = int(persideN * ratio)
+            nodesOnHeight = int(persideN / ratio)
+
+            nodes,simplices,num_nodes,DOF = mesh_rectangle(w,h,nodesOnWidth,nodesOnHeight)
+
+        elif geomType =='sc':
+            rm = geometry[1]
+            width = geometry[2]
+            ri = rm - 0.5*width
+            ro = rm + 0.5*width
+
+            ratio = np.sqrt(11) # ratio of number of elem/angle to number of angles
+
+            persideN = round(np.sqrt(numNodes))
+            nodesOnArc = int(persideN * ratio)
+            nodesOnRow = int(persideN / ratio)
+
+            nodes,simplices,num_nodes,DOF = mesh_semicircle(ri,ro,nodesOnRow,nodesOnArc)
+        else:
+            print('Incorect geometry type')
+            break
+        # Create a stiffness matrix
+        KG = globalStiff(nodes,simplices,Mat)
+        # Combine all boundary conditions
+        Global_BC = BoundaryConditions(DOF)
+        for condition in Conditions:
+            
+            # Add Each conditions parameters to the global boundary condition class
+            hasDistLoad = False
+            distLoadpoints = []
+
+            for i,node in enumerate(nodes):
+                rangeX = condition.rangeX
+                rangeY = condition.rangeY
+
+                if min(rangeX) <= node[0] <= max(rangeX) and min(rangeY) <= node[1] <= max(rangeY):
+                    match condition.type:
+                        case 'Point_Load':
+                            Global_BC.add_point_force(node,condition.fx,condition.fy)
+                        case 'Distributed_Load':
+                            # This one is weird
+                            hasDistLoad = True
+                            distLoadpoints.append(node)
+                        case 'DOF_Constraint':
+                            Global_BC.fix_nodes(node,condition.directions)
+            
+            if hasDistLoad:
+                Global_BC.add_distributed_load(distLoadpoints,condition.fx,condition.fy)
+        
+        
+        # Solve for displacement
+        u_full, maxDeformation = solve_KG_BC(KG,Global_BC)
+        # Save Results (numNodes actual, maxDisp, time elpsed)   
+        num_Nodes_actual.append(num_nodes)
+        maxDisp.append(maxDeformation)
+        
+        end_time = time.perf_counter()
+        elapsed_time = end_time - start_time
+
+        time_to_solve.append(elapsed_time)
+
+    return num_Nodes_actual, maxDisp, time_to_solve
+
+
 
 # Mesh Quality Check
 def check_skew(points,simplecies):

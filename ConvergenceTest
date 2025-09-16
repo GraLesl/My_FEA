@@ -1,0 +1,58 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+from scipy.spatial import Delaunay
+import FEATools as FEAtools
+import time
+from scipy.sparse.linalg import spsolve
+
+# Establish same parameters as ArcSIM
+
+# Define Mesh Parameters 
+rm = 5 # Mean Radius (mm)
+width = 2 # Arc width (mm)
+
+geometry = ['sc', rm, width]
+
+# Material Properties
+SF = 2 # Safety Factor
+E = 160000 / SF # Young's Modulus (MPA)
+v = 0.33
+t = 5 # Thickness in mm 
+
+PLA = FEAtools.Material(E,v,t)
+
+# Create Boundary Condtitions
+ri = rm - 0.5*width
+ro = rm + 0.5*width
+
+# Fixed face
+tol = 0.001
+C1_rangeX = [ri-tol, ro+tol]
+C1_rangeY = [-tol,tol]
+C1_type = 'DOF_Constraint'
+C1_Direction = 'xy'
+
+C1 = FEAtools.singleCondition(C1_type,C1_rangeX,C1_rangeY,directions=C1_Direction)
+
+#Sliding Face
+C2_rangeX = [-ro-tol, -ri+tol]
+C2_rangeY = [-tol,tol]
+C2_type = 'DOF_Constraint'
+C2_Direction = 'y'
+
+C2 = FEAtools.singleCondition(C2_type,C2_rangeX,C2_rangeY,directions=C2_Direction)
+
+# Distributed Load
+C3_rangeX = [-ro-tol, -ri+tol]
+C3_rangeY = [-tol,tol]
+C3_type = 'Distributed_Load'
+C3_fx = 90
+C3 = FEAtools.singleCondition(C3_type,C3_rangeX,C3_rangeY,fx=C3_fx)
+
+num_Nodes, maxDisp, solve_time = FEAtools.convergence(geometry,PLA,[C1,C2,C3])
+print("Number of Nodes", num_Nodes)
+print("Max Displacement", maxDisp)
+print("Solution Time:" , solve_time)
+plt.plot(num_Nodes,maxDisp)
+plt.show()

@@ -13,7 +13,7 @@ ri = rm - 0.5*width
 ro = rm + 0.5*width
 h = 2*ro # IDK maybe graph bounds
 L = ro # IDK maybe graph bounds
-n_elem = 30 # Number of nodes per angle
+n_elem = 25 # Number of nodes per angle
 n_angles = 200 # Number of angles
 tot_elem = n_elem * n_angles
 
@@ -71,8 +71,9 @@ E = 160000 / SF # Young's Modulus (MPA)
 v = 0.33
 t = 5 # Thickness in mm 
 
+PLA = FEAtools.Material(E,v,t)
 # Define Global Stiffness Matrix
-KG = FEAtools.globalStiff(points,simplices,E,v,t)
+KG = FEAtools.globalStiff(points,simplices,PLA)
 
 # Apply Boundary Conditions
 K_reduced, f_reduced, free_points = BC.apply(KG)
