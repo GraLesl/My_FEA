@@ -27,7 +27,7 @@ ri = rm - 0.5*width
 ro = rm + 0.5*width
 
 # Fixed face
-tol = 0.001
+tol = 0.01
 C1_rangeX = [ri-tol, ro+tol]
 C1_rangeY = [-tol,tol]
 C1_type = 'DOF_Constraint'
@@ -50,7 +50,7 @@ C3_type = 'Distributed_Load'
 C3_fx = 90
 C3 = FEAtools.singleCondition(C3_type,C3_rangeX,C3_rangeY,fx=C3_fx)
 
-num_Nodes, maxDisp, solve_time = FEAtools.convergence(geometry,PLA,[C1,C2,C3])
+num_Nodes, maxDisp, solve_time = FEAtools.convergence(geometry,PLA,(C3,C2,C1),nData=10)
 print("Number of Nodes", num_Nodes)
 print("Max Displacement", maxDisp)
 print("Solution Time:" , solve_time)

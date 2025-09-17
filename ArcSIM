@@ -7,21 +7,21 @@ import time
 from scipy.sparse.linalg import spsolve
 
 # Define Mesh Parameters 
-rm = 5 # Mean Radius (mm)
+rm = 3 # Mean Radius (mm)
 width = 2 # Arc width (mm)
 ri = rm - 0.5*width
 ro = rm + 0.5*width
 h = 2*ro # IDK maybe graph bounds
 L = ro # IDK maybe graph bounds
-n_elem = 25 # Number of nodes per angle
-n_angles = 200 # Number of angles
+n_elem = 10 # Number of nodes per angle
+n_angles = 100 # Number of angles
 tot_elem = n_elem * n_angles
 
 
 start_time = time.perf_counter()
 
 # Create Mesh
-points,simplices,num_nodes,DOF,tri = FEAtools.mesh_semicircle(ri,ro,n_elem,n_angles)
+points,simplices,num_nodes,DOF = FEAtools.mesh_semicircle(ri,ro,n_elem,n_angles)
 
 # Cut off extra simplices that generate inside the arc
 '''
@@ -46,7 +46,7 @@ BC = FEAtools.BoundaryConditions(DOF)
 pLocked = []
 pSlide_X = []
 pforced = []
-Force_X = 90 # Force (N)
+Force_X = 9000 # Force (N)
 for i,point in enumerate(points):
     # Lock points on right of arc
     if point[0] > 0 and point[1] < 0.0001:
@@ -63,6 +63,7 @@ pforced = np.array([pforced]).flatten()
 
 BC.fix_nodes(pLocked)
 BC.fix_nodes(pSlide,directions='y')
+
 BC.add_distributed_load(pforced,Force_X,0)
 
 # Material Properties

@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.sparse import lil_matrix
 import time
 from scipy.sparse.linalg import spsolve
+from scipy.linalg import solve_banded
 
 # Stiffness Matrix Manipulation
 # --------------------------------------------------------
@@ -213,6 +214,7 @@ class BoundaryConditions:
         self.f = np.zeros(ndof)
 
     def fix_nodes(self, nodes, directions="xy"):
+
         for node in nodes:
             if "x" in directions:
                 self.fixed_dofs.add(2*node)
@@ -269,7 +271,8 @@ def solve_KG_BC(KG, BC):
     DOF = KG.shape[0]
 
     K_reduced, f_reduced, free_points = BC.apply(KG)
-
+    print("Force", max(BC.f))
+    print(type(K_reduced))
     # Solve for Displacement on all DOFS
     u_reduced = spsolve(K_reduced, f_reduced)
     u_reduced = u_reduced.flatten()
@@ -335,29 +338,33 @@ def convergence(geometry,Mat,Conditions,minNodes = 500, maxNodes = 5000,nData = 
         KG = globalStiff(nodes,simplices,Mat)
         # Combine all boundary conditions
         Global_BC = BoundaryConditions(DOF)
-        for condition in Conditions:
-            
+        for i,condition in enumerate(Conditions):
+            print("Condition Marker")
             # Add Each conditions parameters to the global boundary condition class
             hasDistLoad = False
             distLoadpoints = []
-
+            print(condition.type)
             for i,node in enumerate(nodes):
                 rangeX = condition.rangeX
                 rangeY = condition.rangeY
 
                 if min(rangeX) <= node[0] <= max(rangeX) and min(rangeY) <= node[1] <= max(rangeY):
+                    print(condition.type)
                     match condition.type:
                         case 'Point_Load':
-                            Global_BC.add_point_force(node,condition.fx,condition.fy)
+                            Global_BC.add_point_force([i],condition.fx,condition.fy)
                         case 'Distributed_Load':
                             # This one is weird
+                            print("Got Distributed Load")
                             hasDistLoad = True
-                            distLoadpoints.append(node)
+                            distLoadpoints.append(i)
                         case 'DOF_Constraint':
-                            Global_BC.fix_nodes(node,condition.directions)
+                            Global_BC.fix_nodes([i],condition.directions)
             
             if hasDistLoad:
+                distLoadpoints = np.array([distLoadpoints]).flatten()
                 Global_BC.add_distributed_load(distLoadpoints,condition.fx,condition.fy)
+                
         
         
         # Solve for displacement
@@ -372,8 +379,6 @@ def convergence(geometry,Mat,Conditions,minNodes = 500, maxNodes = 5000,nData = 
         time_to_solve.append(elapsed_time)
 
     return num_Nodes_actual, maxDisp, time_to_solve
-
-
 
 # Mesh Quality Check
 def check_skew(points,simplecies):

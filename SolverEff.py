@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import time
 from scipy.sparse.linalg import spsolve
 
-# Create a plot comparing number of elements to Maximum Deformation
 
+# Create a plot comparing number of elements to Maximum Deformation
 #Test Parameters
 
 nodes = np.array([500,1000,2000])
@@ -15,6 +15,8 @@ h = 500
 t = 5
 E = 210000
 v = 0.3
+
+material = FEAtools.Material(E,v,t)
 Force = 800000
 FigNum = 1
 maxes = []
@@ -30,7 +32,7 @@ print('Strain :' + str(strain))
 print('Stress :' + str(sigma))
 # Function per mesh
 # Create Mesh
-def maxDefTest (width, height, n_elem, E, v, t, Force,fignum):
+def maxDefTest (width, height, n_elem, material, Force,fignum):
 
     start_time = time.perf_counter()
 
@@ -39,7 +41,7 @@ def maxDefTest (width, height, n_elem, E, v, t, Force,fignum):
     nodesOnWidth = int(persideN * ratio)
     nodesOnHeight = int(persideN / ratio)
     nodes,simplices,num_nodes,DOF = FEAtools.mesh_rectangle(width,height,nodesOnWidth,nodesOnHeight)
-    KG = FEAtools.globalStiff(nodes,simplices,E,v,t)
+    KG = FEAtools.globalStiff(nodes,simplices,material)
 
     FEAtools.plot_mesh(nodes,simplices,fignum)
     nodeLocked = []
@@ -92,7 +94,7 @@ def maxDefTest (width, height, n_elem, E, v, t, Force,fignum):
 
 
 for i, num in enumerate(nodes):
-    deform = maxDefTest(w,h,num,E,v,t,Force,FigNum)
+    deform = maxDefTest(w,h,num,material,Force,FigNum)
     testStrain = deform / w
     testStress = E * testStrain
     strains.append(deform / w)
